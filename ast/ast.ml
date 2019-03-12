@@ -46,9 +46,9 @@ type position = Lexing.position =
   }
 
 and location = Location.t = {
-  loc_start: position;
-  loc_end: position;
-  loc_ghost: bool;
+  loc_start: position; [@compare.ignore] [@hash.ignore]
+  loc_end: position;   [@compare.ignore] [@hash.ignore]
+  loc_ghost: bool;     [@compare.ignore] [@hash.ignore]
 }
 
 (* Note on the use of Lexing.position in this module.
@@ -951,7 +951,7 @@ and directive_argument = Parsetree.directive_argument =
   | Pdir_ident of longident
   | Pdir_bool of bool
 
-[@@deriving_inline traverse]
+[@@deriving_inline compare, hash, sexp_of, traverse]
 class virtual map =
   object (self)
     method virtual  bool : bool -> bool
