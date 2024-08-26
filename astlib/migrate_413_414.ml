@@ -68,14 +68,10 @@ and copy_expression_desc :
   | Ast_413.Parsetree.Pexp_let (x0, x1, x2) ->
       Ast_414.Parsetree.Pexp_let
         (copy_rec_flag x0, List.map copy_value_binding x1, copy_expression x2)
-  | Ast_413.Parsetree.Pexp_function x0 ->
-      Ast_414.Parsetree.Pexp_function (List.map copy_case x0)
+  | Ast_413.Parsetree.Pexp_function _ ->
+      failwith "4.13 -> 4.14 transition not supported for Pexp_function"
   | Ast_413.Parsetree.Pexp_fun (x0, x1, x2, x3) ->
-      Ast_414.Parsetree.Pexp_fun
-        ( copy_arg_label x0,
-          Option.map copy_expression x1,
-          copy_pattern x2,
-          copy_expression x3 )
+      failwith "4.13 -> 4.14 transition not supported for Pexp_fun"
   | Ast_413.Parsetree.Pexp_apply (x0, x1) ->
       Ast_414.Parsetree.Pexp_apply
         ( copy_expression x0,
@@ -1110,7 +1106,17 @@ and copy_constructor_arguments :
     Ast_413.Parsetree.constructor_arguments ->
     Ast_414.Parsetree.constructor_arguments = function
   | Ast_413.Parsetree.Pcstr_tuple x0 ->
-      Ast_414.Parsetree.Pcstr_tuple (List.map copy_core_type x0)
+      let mk_constructor_argument core_type =
+        let pca_modalities = [] in
+        let pca_type = copy_core_type core_type in
+        let pca_loc = Location.none in
+        {
+          Ast_414.Parsetree.pca_modalities;
+          Ast_414.Parsetree.pca_type;
+          Ast_414.Parsetree.pca_loc
+        }
+      in
+      Ast_414.Parsetree.Pcstr_tuple (List.map mk_constructor_argument x0)
   | Ast_413.Parsetree.Pcstr_record x0 ->
       Ast_414.Parsetree.Pcstr_record (List.map copy_label_declaration x0)
 
@@ -1126,6 +1132,7 @@ and copy_label_declaration :
   {
     Ast_414.Parsetree.pld_name = copy_loc (fun x -> x) pld_name;
     Ast_414.Parsetree.pld_mutable = copy_mutable_flag pld_mutable;
+    Ast_414.Parsetree.pld_modalities = [];
     Ast_414.Parsetree.pld_type = copy_core_type pld_type;
     Ast_414.Parsetree.pld_loc = copy_location pld_loc;
     Ast_414.Parsetree.pld_attributes = copy_attributes pld_attributes;
@@ -1159,6 +1166,7 @@ and copy_value_description :
   {
     Ast_414.Parsetree.pval_name = copy_loc (fun x -> x) pval_name;
     Ast_414.Parsetree.pval_type = copy_core_type pval_type;
+    Ast_414.Parsetree.pval_modalities = [];
     Ast_414.Parsetree.pval_prim = List.map (fun x -> x) pval_prim;
     Ast_414.Parsetree.pval_attributes = copy_attributes pval_attributes;
     Ast_414.Parsetree.pval_loc = copy_location pval_loc;

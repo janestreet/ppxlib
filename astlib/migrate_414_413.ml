@@ -72,14 +72,8 @@ and copy_expression_desc :
   | Ast_414.Parsetree.Pexp_let (x0, x1, x2) ->
       Ast_413.Parsetree.Pexp_let
         (copy_rec_flag x0, List.map copy_value_binding x1, copy_expression x2)
-  | Ast_414.Parsetree.Pexp_function x0 ->
-      Ast_413.Parsetree.Pexp_function (List.map copy_case x0)
-  | Ast_414.Parsetree.Pexp_fun (x0, x1, x2, x3) ->
-      Ast_413.Parsetree.Pexp_fun
-        ( copy_arg_label x0,
-          Option.map copy_expression x1,
-          copy_pattern x2,
-          copy_expression x3 )
+  | Ast_414.Parsetree.Pexp_function _ ->
+      failwith "4.14 -> 4.13 transition not supported for Pexp_function"
   | Ast_414.Parsetree.Pexp_apply (x0, x1) ->
       Ast_413.Parsetree.Pexp_apply
         ( copy_expression x0,
@@ -1121,7 +1115,10 @@ and copy_constructor_arguments :
     Ast_414.Parsetree.constructor_arguments ->
     Ast_413.Parsetree.constructor_arguments = function
   | Ast_414.Parsetree.Pcstr_tuple x0 ->
-      Ast_413.Parsetree.Pcstr_tuple (List.map copy_core_type x0)
+      let mk_core_type { Ast_414.Parsetree.pca_type; _ } =
+        copy_core_type pca_type
+      in
+      Ast_413.Parsetree.Pcstr_tuple (List.map mk_core_type x0)
   | Ast_414.Parsetree.Pcstr_record x0 ->
       Ast_413.Parsetree.Pcstr_record (List.map copy_label_declaration x0)
 

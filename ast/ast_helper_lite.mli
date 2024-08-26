@@ -274,6 +274,7 @@ module Val : sig
     ?loc:loc ->
     ?attrs:attrs ->
     ?prim:string list ->
+    ?modalities:modality with_loc list ->
     str ->
     core_type ->
     value_description
@@ -292,6 +293,12 @@ module Type : sig
     str ->
     type_declaration
 
+  val constructor_arg :
+    ?loc:loc ->
+    ?modalities:(modality with_loc list) ->
+    core_type ->
+    constructor_argument
+
   val constructor :
     ?loc:loc ->
     ?attrs:attrs ->
@@ -305,6 +312,7 @@ module Type : sig
     ?loc:loc ->
     ?attrs:attrs ->
     ?mut:mutable_flag ->
+    ?modalities:(modality with_loc list) ->
     str ->
     core_type ->
     label_declaration

@@ -68,14 +68,11 @@ and copy_expression_desc :
   | Ast_501.Parsetree.Pexp_let (x0, x1, x2) ->
       Ast_500.Parsetree.Pexp_let
         (copy_rec_flag x0, List.map copy_value_binding x1, copy_expression x2)
-  | Ast_501.Parsetree.Pexp_function x0 ->
-      Ast_500.Parsetree.Pexp_function (List.map copy_case x0)
-  | Ast_501.Parsetree.Pexp_fun (x0, x1, x2, x3) ->
-      Ast_500.Parsetree.Pexp_fun
-        ( copy_arg_label x0,
-          Option.map copy_expression x1,
-          copy_pattern x2,
-          copy_expression x3 )
+  | Ast_501.Parsetree.Pexp_function (x0, x1, x2) ->
+      Ast_500.Parsetree.Pexp_function
+        ( List.map copy_function_param x0
+        , Option.map copy_function_constraint x1
+        , copy_function_body x2 )
   | Ast_501.Parsetree.Pexp_apply (x0, x1) ->
       Ast_500.Parsetree.Pexp_apply
         ( copy_expression x0,
@@ -197,6 +194,50 @@ and copy_binding_op :
     Ast_500.Parsetree.pbop_exp = copy_expression pbop_exp;
     Ast_500.Parsetree.pbop_loc = copy_location pbop_loc;
   }
+
+and copy_function_param :
+  Ast_501.Parsetree.function_param -> Ast_500.Parsetree.function_param =
+  fun { pparam_desc; pparam_loc } ->
+  { pparam_loc = copy_location pparam_loc;
+    pparam_desc = copy_function_param_desc pparam_desc;
+  }
+
+and copy_function_param_desc :
+  Ast_501.Parsetree.function_param_desc -> Ast_500.Parsetree.function_param_desc =
+  function
+  | Pparam_newtype (x0, x1) ->
+      Pparam_newtype (x0, Option.map (copy_loc copy_jkind_annotation) x1)
+  | Pparam_val (x0, x1, x2) ->
+      Pparam_val (copy_arg_label x0, Option.map copy_expression x1, copy_pattern x2)
+
+and copy_function_constraint :
+  Ast_501.Parsetree.function_constraint -> Ast_500.Parsetree.function_constraint =
+  fun { mode_annotations; type_constraint } ->
+  { mode_annotations;
+    type_constraint = copy_type_constraint type_constraint;
+  }
+
+and copy_type_constraint :
+  Ast_501.Parsetree.type_constraint -> Ast_500.Parsetree.type_constraint =
+  function
+  | Pcoerce (x0, x1) -> Pcoerce (Option.map copy_core_type x0, copy_core_type x1)
+  | Pconstraint x0 -> Pconstraint (copy_core_type x0)
+
+and copy_function_body :
+  Ast_501.Parsetree.function_body -> Ast_500.Parsetree.function_body =
+  function
+  | Pfunction_body x0 -> Pfunction_body (copy_expression x0)
+  | Pfunction_cases (x0, x1, x2) ->
+    Pfunction_cases (List.map copy_case x0, copy_location x1, copy_attributes x2)
+
+and copy_jkind_annotation :
+  Ast_501.Parsetree.jkind_annotation -> Ast_500.Parsetree.jkind_annotation =
+  function
+  | Default -> Default
+  | Abbreviation x0 -> Abbreviation x0
+  | Mod (x0, x1) -> Mod (copy_jkind_annotation x0, x1)
+  | With (x0, x1) -> With (copy_jkind_annotation x0, copy_core_type x1)
+  | Kind_of x0 -> Kind_of (copy_core_type x0)
 
 and copy_direction_flag :
     Ast_501.Asttypes.direction_flag -> Ast_500.Asttypes.direction_flag =
@@ -1302,11 +1343,25 @@ and copy_constructor_declaration :
     Ast_500.Parsetree.pcd_attributes = copy_attributes pcd_attributes;
   }
 
+and copy_constructor_argument :
+  Ast_501.Parsetree.constructor_argument ->
+  Ast_500.Parsetree.constructor_argument =
+  fun {
+    Ast_501.Parsetree.pca_modalities;
+    Ast_501.Parsetree.pca_type;
+    Ast_501.Parsetree.pca_loc;
+  } ->
+  {
+    Ast_500.Parsetree.pca_modalities = List.map (copy_loc copy_modality) pca_modalities;
+    Ast_500.Parsetree.pca_type = copy_core_type pca_type;
+    Ast_500.Parsetree.pca_loc = copy_location pca_loc;
+  }
+
 and copy_constructor_arguments :
     Ast_501.Parsetree.constructor_arguments ->
     Ast_500.Parsetree.constructor_arguments = function
   | Ast_501.Parsetree.Pcstr_tuple x0 ->
-      Ast_500.Parsetree.Pcstr_tuple (List.map copy_core_type x0)
+      Ast_500.Parsetree.Pcstr_tuple (List.map copy_constructor_argument x0)
   | Ast_501.Parsetree.Pcstr_record x0 ->
       Ast_500.Parsetree.Pcstr_record (List.map copy_label_declaration x0)
 
@@ -1315,6 +1370,7 @@ and copy_label_declaration :
  fun {
        Ast_501.Parsetree.pld_name;
        Ast_501.Parsetree.pld_mutable;
+       Ast_501.Parsetree.pld_modalities;
        Ast_501.Parsetree.pld_type;
        Ast_501.Parsetree.pld_loc;
        Ast_501.Parsetree.pld_attributes;
@@ -1322,6 +1378,7 @@ and copy_label_declaration :
   {
     Ast_500.Parsetree.pld_name = copy_loc (fun x -> x) pld_name;
     Ast_500.Parsetree.pld_mutable = copy_mutable_flag pld_mutable;
+    Ast_500.Parsetree.pld_modalities = List.map (copy_loc copy_modality) pld_modalities;
     Ast_500.Parsetree.pld_type = copy_core_type pld_type;
     Ast_500.Parsetree.pld_loc = copy_location pld_loc;
     Ast_500.Parsetree.pld_attributes = copy_attributes pld_attributes;
@@ -1348,6 +1405,7 @@ and copy_value_description :
  fun {
        Ast_501.Parsetree.pval_name;
        Ast_501.Parsetree.pval_type;
+       Ast_501.Parsetree.pval_modalities;
        Ast_501.Parsetree.pval_prim;
        Ast_501.Parsetree.pval_attributes;
        Ast_501.Parsetree.pval_loc;
@@ -1355,6 +1413,8 @@ and copy_value_description :
   {
     Ast_500.Parsetree.pval_name = copy_loc (fun x -> x) pval_name;
     Ast_500.Parsetree.pval_type = copy_core_type pval_type;
+    Ast_500.Parsetree.pval_modalities =
+      List.map (copy_loc copy_modality) pval_modalities;
     Ast_500.Parsetree.pval_prim = List.map (fun x -> x) pval_prim;
     Ast_500.Parsetree.pval_attributes = copy_attributes pval_attributes;
     Ast_500.Parsetree.pval_loc = copy_location pval_loc;
@@ -1385,6 +1445,12 @@ and copy_rec_flag : Ast_501.Asttypes.rec_flag -> Ast_500.Asttypes.rec_flag =
   function
   | Ast_501.Asttypes.Nonrecursive -> Ast_500.Asttypes.Nonrecursive
   | Ast_501.Asttypes.Recursive -> Ast_500.Asttypes.Recursive
+
+and copy_modality :
+  Ast_501.Parsetree.modality ->
+  Ast_500.Parsetree.modality =
+  function
+  | Ast_501.Parsetree.Modality m -> Ast_500.Parsetree.Modality m
 
 and copy_constant : Ast_501.Parsetree.constant -> Ast_500.Parsetree.constant =
   function

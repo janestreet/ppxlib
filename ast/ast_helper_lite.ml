@@ -201,8 +201,14 @@ module Exp = struct
   let ident ?loc ?attrs a = mk ?loc ?attrs (Pexp_ident a)
   let constant ?loc ?attrs a = mk ?loc ?attrs (Pexp_constant a)
   let let_ ?loc ?attrs a b c = mk ?loc ?attrs (Pexp_let (a, b, c))
-  let fun_ ?loc ?attrs a b c d = mk ?loc ?attrs (Pexp_fun (a, b, c, d))
-  let function_ ?loc ?attrs a = mk ?loc ?attrs (Pexp_function a)
+  let fun_ ?(loc = !default_loc) ?attrs a b c d =
+    mk ~loc ?attrs
+      (Pexp_function
+         ( [ { pparam_loc = loc; pparam_desc = Pparam_val (a, b, c) } ]
+         , None
+         , Pfunction_body d ))
+  let function_ ?(loc = !default_loc) ?attrs a =
+    mk ~loc ?attrs (Pexp_function ([], None, Pfunction_cases (a, loc, [])))
   let apply ?loc ?attrs a b = mk ?loc ?attrs (Pexp_apply (a, b))
   let match_ ?loc ?attrs a b = mk ?loc ?attrs (Pexp_match (a, b))
   let try_ ?loc ?attrs a b = mk ?loc ?attrs (Pexp_try (a, b))
@@ -367,10 +373,12 @@ module Cf = struct
 end
 
 module Val = struct
-  let mk ?(loc = !default_loc) ?(attrs = []) ?(prim = []) name typ =
+  let mk ?(loc = !default_loc) ?(attrs = []) ?(prim = [])
+    ?(modalities = []) name typ =
     {
       pval_name = name;
       pval_type = typ;
+      pval_modalities = modalities;
       pval_attributes = attrs;
       pval_loc = loc;
       pval_prim = prim;
@@ -465,10 +473,19 @@ module Type = struct
       pcd_attributes = attrs;
     }
 
-  let field ?(loc = !default_loc) ?(attrs = []) ?(mut = Immutable) name typ =
+  let constructor_arg ?(loc = !default_loc) ?(modalities = []) typ =
+    {
+      pca_modalities = modalities;
+      pca_type = typ;
+      pca_loc = loc;
+    }
+
+  let field ?(loc = !default_loc) ?(attrs = []) ?(mut = Immutable)
+        ?(modalities = []) name typ =
     {
       pld_name = name;
       pld_mutable = mut;
+      pld_modalities = modalities;
       pld_type = typ;
       pld_loc = loc;
       pld_attributes = attrs;

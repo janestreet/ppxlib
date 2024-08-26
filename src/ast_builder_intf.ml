@@ -45,6 +45,10 @@ module type Additional_helpers = sig
   val elist : (expression list -> expression) with_loc
   val plist : (pattern list -> pattern) with_loc
 
+  val pexp_function : (case list -> expression) with_loc
+  val pexp_fun :
+    (arg_label -> expression option -> pattern -> expression -> expression) with_loc
+
   val pstr_value_list :
     loc:Location.t ->
     Asttypes.rec_flag ->
@@ -110,6 +114,23 @@ module type Additional_helpers = sig
 
   val eta_reduce_if_possible_and_nonrec :
     expression -> rec_flag:rec_flag -> expression
+
+  (*---------------------------------------------------------------*)
+
+  (* override changed nodes to use [Ppxlib_jane] interface *)
+  val label_declaration :
+    (name:string loc ->
+    mutable_:mutable_flag ->
+    type_:core_type ->
+    label_declaration) with_loc
+
+  val value_description :
+    (name:string loc ->
+    type_:core_type ->
+    prim:string list ->
+    value_description) with_loc
+
+  (* ----------------------------------------------------- *)
 end
 
 module type Located = sig

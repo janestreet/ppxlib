@@ -5,9 +5,9 @@
 (library
  (name ppxlib_ast)
  (public_name ppxlib.ast)
- (libraries astlib stdlib-shims)
+ (libraries astlib compiler-libs.common ocaml-compiler-libs.common ocaml-compiler-libs.shadow stdlib-shims)
  (flags
-  (:standard -safe-string)
+  (:standard -safe-string -open Ocaml_shadow)
   -w
   -9-27-32)
  (preprocess

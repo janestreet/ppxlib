@@ -3,16 +3,19 @@
  (public_name ppxlib)
  (libraries
   (re_export ppxlib_ast)
+  compiler-libs.common
+  ocaml-compiler-libs.common
   ocaml-compiler-libs.shadow
   astlib
   ppxlib_print_diff
   ppx_derivers
+  ppxlib_jane
   ppxlib_traverse_builtins
   stdppx
   stdlib-shims
   sexplib0)
  (flags
-  (:standard -safe-string))
+  (:standard -safe-string -open Ocaml_shadow))
  (ppx.driver
   (main Ppxlib.Driver.standalone)
   (flags

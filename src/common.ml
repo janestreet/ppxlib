@@ -112,7 +112,7 @@ class type_is_recursive rec_flag tds =
     method! constructor_declaration cd =
       (* Don't recurse through cd.pcd_res *)
       match cd.pcd_args with
-      | Pcstr_tuple args -> List.iter args ~f:self#core_type
+      | Pcstr_tuple args -> List.iter args ~f:self#constructor_argument
       | Pcstr_record fields -> List.iter fields ~f:self#label_declaration
 
     method! attributes _ = (* Don't recurse through attributes *)

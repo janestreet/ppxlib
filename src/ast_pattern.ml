@@ -235,6 +235,14 @@ let no_label t = cst Asttypes.Nolabel ~to_string:(fun _ -> "Nolabel") ** t
 let ebool t = pexp_construct (lident (bool' t)) none
 let pbool t = ppat_construct (lident (bool' t)) none
 
+let pexp_function cases =
+  pexp_function nil none
+    (pfunction_cases cases
+       drop
+       (T (fun _ _ attrs k ->
+            Common.assert_no_attributes attrs;
+            k)))
+
 let extension (T f1) (T f2) =
   T
     (fun ctx loc ((name : _ Loc.t), payload) k ->

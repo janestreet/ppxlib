@@ -1,3 +1,6 @@
+open struct
+(* Old contents of [pprintast.ml]; not indented to minimize the diff *)
+
 (**************************************************************************)
 (*                                                                        *)
 (*                                 OCaml                                  *)
@@ -111,6 +114,9 @@ let andop s =
   && s.[2] = 'd'
   && List.mem s.[3] infix_symbols
 
+let mode f { Location.txt; _ } =
+  pp_print_string f txt
+
 (* determines if the string is an infix string.
    checks backwards, first allowing a renaming postfix ("_102") which
    may have resulted from Pexp -> Texp -> Pexp translation, then checking
@@ -220,12 +226,13 @@ let is_simple_construct : construct -> bool = function
 
 let pp = fprintf
 
-type ctxt = { pipe : bool; semi : bool; ifthenelse : bool }
+type ctxt = { pipe : bool; semi : bool; ifthenelse : bool; functionrhs : bool }
 
-let reset_ctxt = { pipe = false; semi = false; ifthenelse = false }
+let reset_ctxt = { pipe = false; semi = false; ifthenelse = false; functionrhs = false }
 let under_pipe ctxt = { ctxt with pipe = true }
 let under_semi ctxt = { ctxt with semi = true }
 let under_ifthenelse ctxt = { ctxt with ifthenelse = true }
+let under_functionrhs ctxt = { ctxt with functionrhs=true }
 (*
 let reset_semi ctxt = { ctxt with semi=false }
 let reset_ifthenelse ctxt = { ctxt with ifthenelse=false }
@@ -688,7 +695,7 @@ and expression ctxt f x =
       (attributes ctxt) x.pexp_attributes
   else
     match x.pexp_desc with
-    | Pexp_function _ | Pexp_fun _ | Pexp_match _ | Pexp_try _ | Pexp_sequence _
+    | Pexp_function _ | Pexp_match _ | Pexp_try _ | Pexp_sequence _
     | Pexp_newtype _
       when ctxt.pipe || ctxt.semi ->
         paren true (expression reset_ctxt) f x
@@ -698,12 +705,29 @@ and expression ctxt f x =
     | Pexp_letop _
       when ctxt.semi ->
         paren true (expression reset_ctxt) f x
-    | Pexp_fun (l, e0, p, e) ->
-        pp f "@[<2>fun@;%a->@;%a@]" (label_exp ctxt) (l, e0, p)
-          (expression ctxt) e
     | Pexp_newtype (lid, e) ->
         pp f "@[<2>fun@;(type@;%s)@;->@;%a@]" lid.txt (expression ctxt) e
-    | Pexp_function l -> pp f "@[<hv>function%a@]" (case_list ctxt) l
+    | Pexp_function (params, constraint_, body) ->
+      begin match params, constraint_ with
+        (* Omit [fun] if there are no params. *)
+        | [], None ->
+          let should_paren =
+            match body with
+            | Pfunction_cases _ -> ctxt.functionrhs
+            | Pfunction_body _ -> false
+          in
+          let ctxt' = if should_paren then reset_ctxt else ctxt in
+          pp f "@[<2>%a@]" (paren should_paren (function_body ctxt')) body
+        | [], Some constraint_ ->
+          pp f "@[<2>(%a@;%a)@]"
+            (function_body ctxt) body
+            (function_constraint ctxt) constraint_
+        | _ :: _, _ ->
+          pp f "@[<2>fun@;%t@]"
+            (fun f ->
+               function_params_then_body
+                 ctxt f params constraint_ body ~delimiter:"->")
+      end
     | Pexp_match (e, l) ->
         pp f "@[<hv0>@[<hv0>@[<2>match %a@]@ with@]%a@]" (expression reset_ctxt)
           e (case_list ctxt) l
@@ -909,6 +933,66 @@ and simple_expr ctxt f x =
         pp f fmt (pattern ctxt) s expression e1 direction_flag df expression e2
           expression e3
     | _ -> paren true (expression ctxt) f x
+
+and jkind ctxt f k = match k with
+  | Default -> pp f "_"
+  | Abbreviation s ->
+    pp f "%s" s.txt
+  | Mod (t, { txt = mode_list }) ->
+    begin match mode_list with
+      | [] -> Misc.fatal_error "malformed jkind annotation"
+      | _ :: _ ->
+        pp f "%a mod %a"
+          (jkind ctxt) t
+          (pp_print_list ~pp_sep:pp_print_space mode) mode_list
+    end
+  | With (t, ty) ->
+    pp f "%a with %a" (jkind ctxt) t (core_type ctxt) ty
+  | Kind_of ty -> pp f "kind_of_ %a" (core_type ctxt) ty
+
+and jkind_annotation ctxt f annot = jkind ctxt f annot.txt
+
+and function_param ctxt f { pparam_desc; pparam_loc = _ } =
+  match pparam_desc with
+  | Pparam_val (a, b, c) -> label_exp ctxt f (a, b, c)
+  | Pparam_newtype (ty, None) -> pp f "(type %s)" ty.txt
+  | Pparam_newtype (ty, Some annot) ->
+      pp f "(type %s : %a)" ty.txt (jkind_annotation ctxt) annot
+
+and function_body ctxt f x =
+  match x with
+  | Pfunction_body body -> expression ctxt f body
+  | Pfunction_cases (cases, _, attrs) ->
+    pp f "@[<hv>function%a%a@]"
+      (item_attributes ctxt) attrs
+      (case_list ctxt) cases
+
+and function_constraint ctxt f x =
+  (* We don't currently print [x.alloc_mode]; this would need
+     to go on the enclosing [let] binding.
+  *)
+  (* Enable warning 9 to ensure that the record pattern doesn't miss any field.
+  *)
+  match[@ocaml.warning "+9"] x with
+  | { type_constraint = Pconstraint ty; mode_annotations = _ } ->
+    pp f ":@;%a" (core_type ctxt) ty
+  | { type_constraint = Pcoerce (ty1, ty2); mode_annotations = _ } ->
+    pp f "%a:>@;%a"
+      (option ~first:":@;" (core_type ctxt)) ty1
+      (core_type ctxt) ty2
+
+and function_params_then_body ctxt f params constraint_ body ~delimiter =
+  let pp_params f =
+    match params with
+    | [] -> ()
+    | _ :: _ -> pp f "%a@;" (list (function_param ctxt) ~sep:"@ ") params
+  in
+  pp f "%t%a%s@;%a"
+    pp_params
+    (option (function_constraint ctxt) ~first:"@;") constraint_
+    delimiter
+    (function_body (under_functionrhs ctxt)) body
+
 
 and attributes ctxt f l = List.iter (attribute ctxt f) l
 and item_attributes ctxt f l = List.iter (item_attribute ctxt f) l
@@ -1312,12 +1396,6 @@ and binding ctxt f { pvb_pat = p; pvb_expr = x; _ } =
     if x.pexp_attributes <> [] then pp f "=@;%a" (expression ctxt) x
     else
       match x.pexp_desc with
-      | Pexp_fun (label, eo, p, e) ->
-          if label = Nolabel then
-            pp f "%a@ %a" (simple_pattern ctxt) p pp_print_pexp_function e
-          else
-            pp f "%a@ %a" (label_exp ctxt) (label, eo, p) pp_print_pexp_function
-              e
       | Pexp_newtype (str, e) ->
           pp f "(type@ %s)@ %a" str.txt pp_print_pexp_function e
       | _ -> pp f "=@;%a" (expression ctxt) x
@@ -1652,7 +1730,9 @@ and constructor_declaration ctxt f (name, vars, args, res, attrs) =
         (fun f -> function
           | Pcstr_tuple [] -> ()
           | Pcstr_tuple l ->
-              pp f "@;of@;%a" (list (core_type1 ctxt) ~sep:"@;*@;") l
+              pp f "@;of@;%a" (list (core_type1 ctxt) ~sep:"@;*@;")
+                (* just ignore modalities, this is backup pprinting anyways *)
+                (List.map (fun ca -> ca.pca_type) l)
           | Pcstr_record l -> pp f "@;of@;%a" (record_declaration ctxt) l)
         args (attributes ctxt) attrs
   | Some r ->
@@ -1662,7 +1742,9 @@ and constructor_declaration ctxt f (name, vars, args, res, attrs) =
           | Pcstr_tuple l ->
               pp f "%a@;->@;%a"
                 (list (core_type1 ctxt) ~sep:"@;*@;")
-                l (core_type1 ctxt) r
+                (* just ignore modalities, this is backup pprinting anyways *)
+                (List.map (fun ca -> ca.pca_type) l)
+                (core_type1 ctxt) r
           | Pcstr_record l ->
               pp f "%a@;->@;%a" (record_declaration ctxt) l (core_type1 ctxt) r)
         args (attributes ctxt) attrs
@@ -1756,3 +1838,165 @@ let module_type = module_type reset_ctxt
 let signature_item = signature_item reset_ctxt
 let structure_item = structure_item reset_ctxt
 let type_declaration = type_declaration reset_ctxt
+
+end
+
+(* Connect to the compiler's [Pprintast] if possible *)
+
+module Janestreet = Ocaml_common.Pprintast
+
+(* When the AST used by Ppxlib changes, update [From] and add the appropriate
+   [Migrate_XXX_to_YYY] calls to the [copy] functions; when we update the compiler, update
+   [To] and remove the appropriate [Migrate_XXX_to_YYY] calls. *)
+module To_janestreet = struct
+  module From = Ast_414.Parsetree
+  module To = Ast_501.Parsetree
+
+  let copy_structure (x : From.structure) : To.structure =
+    Migrate_500_501.copy_structure x
+
+  let copy_signature (x : From.signature) : To.signature =
+    Migrate_500_501.copy_signature x
+
+  let copy_toplevel_phrase (x : From.toplevel_phrase) : To.toplevel_phrase =
+      Migrate_500_501.copy_toplevel_phrase x
+
+  let copy_core_type (x : From.core_type) : To.core_type =
+      Migrate_500_501.copy_core_type x
+
+  let copy_expression (x : From.expression) : To.expression =
+      Migrate_500_501.copy_expression x
+
+  let copy_pattern (x : From.pattern) : To.pattern =
+      Migrate_500_501.copy_pattern x
+
+  let copy_type_declaration (x : From.type_declaration) : To.type_declaration =
+    Migrate_500_501.copy_type_declaration x
+
+  let copy_class_expr (x : From.class_expr) : To.class_expr =
+    Migrate_500_501.copy_class_expr x
+
+  let copy_class_field (x : From.class_field) : To.class_field =
+    Migrate_500_501.copy_class_field x
+
+  let copy_class_type (x : From.class_type) : To.class_type =
+    Migrate_500_501.copy_class_type x
+
+  let copy_class_signature (x : From.class_signature) : (To.class_signature) =
+    Migrate_500_501.copy_class_signature x
+
+  let copy_class_type_field (x : From.class_type_field) : To.class_type_field =
+    Migrate_500_501.copy_class_type_field x
+
+  let copy_module_expr (x : From.module_expr) : To.module_expr =
+    Migrate_500_501.copy_module_expr x
+
+  let copy_module_type (x : From.module_type) : To.module_type =
+    Migrate_500_501.copy_module_type x
+
+  let copy_signature_item (x : From.signature_item) : To.signature_item =
+    Migrate_500_501.copy_signature_item x
+
+  let copy_structure_item (x : From.structure_item) : To.structure_item =
+    Migrate_500_501.copy_structure_item x
+end
+
+type nonrec space_formatter = space_formatter
+
+let null_formatter = Format.make_formatter (fun _ _ _ -> ()) (fun () -> ())
+
+(* This function defines the strategy for attempting to print a parsing AST, even
+   when we can't trust the compiler distribution's Pprintast.
+
+   Sometimes, the compiler distribution's Pprintast raises on Jane Syntax. This is
+   bad and annoying, but it's hard to fix, and we're in the process of deleting
+   Jane Syntax anyway.
+
+   It's sad to not be able to print an AST at all. So, in the event of an exception,
+   we'd really like to print the AST with backup printer that never raises. (That's
+   [on_failure].)
+
+   To judge whether printing the AST will raise with the compiler's printer, we
+   run it ([f]) on the null formatter first. (If we naively ran it on [fmt], then
+   parts of the AST would be printed twice if an exception was raised.)
+*)
+let try_print f fmt ast ~on_failure =
+  match f null_formatter ast with
+  | () -> f fmt ast
+  | exception _ -> on_failure ()
+
+let toplevel_phrase fmt phrase =
+  try_print Janestreet.toplevel_phrase fmt (To_janestreet.copy_toplevel_phrase phrase)
+    ~on_failure:(fun () -> toplevel_phrase fmt phrase)
+
+let expression fmt expr =
+  try_print Janestreet.expression fmt (To_janestreet.copy_expression expr)
+    ~on_failure:(fun () -> expression fmt expr)
+
+let string_of_expression expr =
+  try Janestreet.string_of_expression (To_janestreet.copy_expression expr)
+  with _ -> string_of_expression expr
+
+let top_phrase fmt phrase =
+  try_print Janestreet.top_phrase fmt (To_janestreet.copy_toplevel_phrase phrase)
+    ~on_failure:(fun () -> top_phrase fmt phrase)
+
+let core_type fmt typ =
+  try_print Janestreet.core_type fmt (To_janestreet.copy_core_type typ)
+    ~on_failure:(fun () -> core_type fmt typ)
+
+let pattern fmt pat =
+  try_print Janestreet.pattern fmt (To_janestreet.copy_pattern pat)
+    ~on_failure:(fun () -> pattern fmt pat)
+
+let signature fmt sg =
+  try_print Janestreet.signature fmt (To_janestreet.copy_signature sg)
+    ~on_failure:(fun () -> signature fmt sg)
+
+let structure fmt st =
+  try_print Janestreet.structure fmt (To_janestreet.copy_structure st)
+    ~on_failure:(fun () -> structure fmt st)
+
+let string_of_structure st =
+  try Janestreet.string_of_structure (To_janestreet.copy_structure st)
+  with _ -> string_of_structure st
+
+let class_expr fmt clexpr =
+  try_print Janestreet.class_expr fmt (To_janestreet.copy_class_expr clexpr)
+    ~on_failure:(fun () -> class_expr fmt clexpr)
+
+let class_field fmt clfield =
+  try_print Janestreet.class_field fmt (To_janestreet.copy_class_field clfield)
+    ~on_failure:(fun () -> class_field fmt clfield)
+
+let class_type fmt clty =
+  try_print Janestreet.class_type fmt (To_janestreet.copy_class_type clty)
+    ~on_failure:(fun () -> class_type fmt clty)
+
+let class_signature fmt clsig =
+  try_print Janestreet.class_signature fmt (To_janestreet.copy_class_signature clsig)
+    ~on_failure:(fun () -> class_signature fmt clsig)
+
+let class_type_field fmt ctf =
+  try_print Janestreet.class_type_field fmt (To_janestreet.copy_class_type_field ctf)
+    ~on_failure:(fun () -> class_type_field fmt ctf)
+
+let module_expr fmt mod_expr =
+  try_print Janestreet.module_expr fmt (To_janestreet.copy_module_expr mod_expr)
+    ~on_failure:(fun () -> module_expr fmt mod_expr)
+
+let module_type fmt mod_ty =
+  try_print Janestreet.module_type fmt (To_janestreet.copy_module_type mod_ty)
+    ~on_failure:(fun () -> module_type fmt mod_ty)
+
+let signature_item fmt sig_item =
+  try_print Janestreet.signature_item fmt (To_janestreet.copy_signature_item sig_item)
+    ~on_failure:(fun () -> signature_item fmt sig_item)
+
+let structure_item fmt str_item =
+  try_print Janestreet.structure_item fmt (To_janestreet.copy_structure_item str_item)
+    ~on_failure:(fun () -> structure_item fmt str_item)
+
+let type_declaration fmt tydecl =
+  try_print Janestreet.type_declaration fmt (To_janestreet.copy_type_declaration tydecl)
+    ~on_failure:(fun () -> type_declaration fmt tydecl)

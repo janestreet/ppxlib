@@ -90,6 +90,8 @@ module Parsetree = struct
 
   type location_stack = Location.t list
 
+  type modality (*IF_CURRENT = Parsetree.modality *) = | Modality of string [@@unboxed]
+
   (** {1 Extension points} *)
 
   type attribute (*IF_CURRENT = Parsetree.attribute *) = {
@@ -341,30 +343,21 @@ module Parsetree = struct
               - [let rec P1 = E1 and ... and Pn = EN in E]
                  when [flag] is {{!Asttypes.rec_flag.Recursive}[Recursive]}.
            *)
-    | Pexp_function of case list  (** [function P1 -> E1 | ... | Pn -> En] *)
-    | Pexp_fun of arg_label * expression option * pattern * expression
-        (** [Pexp_fun(lbl, exp0, P, E1)] represents:
-              - [fun P -> E1]
-                        when [lbl] is {{!Asttypes.arg_label.Nolabel}[Nolabel]}
-                         and [exp0] is [None]
-              - [fun ~l:P -> E1]
-                        when [lbl] is {{!Asttypes.arg_label.Labelled}[Labelled l]}
-                         and [exp0] is [None]
-              - [fun ?l:P -> E1]
-                        when [lbl] is {{!Asttypes.arg_label.Optional}[Optional l]}
-                         and [exp0] is [None]
-              - [fun ?l:(P = E0) -> E1]
-                        when [lbl] is {{!Asttypes.arg_label.Optional}[Optional l]}
-                         and [exp0] is [Some E0]
+    | Pexp_function of
+        function_param list * function_constraint option * function_body
+    (** [Pexp_function ([P1; ...; Pn], C, body)] represents any construct
+        involving [fun] or [function], including:
+        - [fun P1 ... Pn -> E]
+          when [body = Pfunction_body E]
+        - [fun P1 ... Pn -> function p1 -> e1 | ... | pm -> em]
+          when [body = Pfunction_cases [ p1 -> e1; ...; pm -> em ]]
 
-             Notes:
-             - If [E0] is provided, only
-               {{!Asttypes.arg_label.Optional}[Optional]} is allowed.
-             - [fun P1 P2 .. Pn -> E1] is represented as nested
-               {{!expression_desc.Pexp_fun}[Pexp_fun]}.
-             - [let f P = E] is represented using
-               {{!expression_desc.Pexp_fun}[Pexp_fun]}.
-           *)
+        [C] represents a type constraint or coercion placed immediately before the
+        arrow, e.g. [fun P1 ... Pn : ty -> ...] when [C = Some (Pconstraint ty)].
+
+        A function must have parameters. [Pexp_function (params, _, body)] must
+        have non-empty [params] or a [Pfunction_cases _] body.
+    *)
     | Pexp_apply of expression * (arg_label * expression) list
         (** [Pexp_apply(E0, [(l1, E1) ; ... ; (ln, En)])]
               represents [E0 ~l1:E1 ... ~ln:En]
@@ -485,12 +478,83 @@ module Parsetree = struct
       pbop_loc : Location.t;
     }
 
+  and function_param_desc (*IF_CURRENT = Parsetree.function_param_desc *) =
+    | Pparam_val of arg_label * expression option * pattern
+    (** [Pparam_val (lbl, exp0, P)] represents the parameter:
+        - [P]
+          when [lbl] is {{!Asttypes.arg_label.Nolabel}[Nolabel]}
+          and [exp0] is [None]
+        - [~l:P]
+          when [lbl] is {{!Asttypes.arg_label.Labelled}[Labelled l]}
+          and [exp0] is [None]
+        - [?l:P]
+          when [lbl] is {{!Asttypes.arg_label.Optional}[Optional l]}
+          and [exp0] is [None]
+        - [?l:(P = E0)]
+          when [lbl] is {{!Asttypes.arg_label.Optional}[Optional l]}
+          and [exp0] is [Some E0]
+
+        Note: If [E0] is provided, only
+        {{!Asttypes.arg_label.Optional}[Optional]} is allowed.
+    *)
+    | Pparam_newtype of string loc * jkind_annotation loc option
+    (** [Pparam_newtype x] represents the parameter [(type x)].
+        [x] carries the location of the identifier, whereas the [pparam_loc]
+        on the enclosing [function_param] node is the location of the [(type x)]
+        as a whole.
+
+        Multiple parameters [(type a b c)] are represented as multiple
+        [Pparam_newtype] nodes, let's say:
+
+        {[ [ { pparam_kind = Pparam_newtype a; pparam_loc = loc1 };
+            { pparam_kind = Pparam_newtype b; pparam_loc = loc2 };
+            { pparam_kind = Pparam_newtype c; pparam_loc = loc3 };
+          ]
+        ]}
+
+        Here, the first loc [loc1] is the location of [(type a b c)], and the
+        subsequent locs [loc2] and [loc3] are the same as [loc1], except marked as
+        ghost locations. The locations on [a], [b], [c], correspond to the
+        variables [a], [b], and [c] in the source code.
+    *)
+
+  and function_param (*IF_CURRENT = Parsetree.function_param *) =
+    { pparam_loc : Location.t;
+      pparam_desc : function_param_desc;
+    }
+
+  and function_body (*IF_CURRENT = Parsetree.function_body *) =
+    | Pfunction_body of expression
+    | Pfunction_cases of case list * Location.t * attributes
+    (** In [Pfunction_cases (_, loc, attrs)], the location extends from the
+        start of the [function] keyword to the end of the last case. The compiler
+        will only use typechecking-related attributes from [attrs], e.g. enabling
+        or disabling a warning.
+    *)
+  (** See the comment on {{!expression_desc.Pexp_function}[Pexp_function]}. *)
+
+  and type_constraint (*IF_CURRENT = Parsetree.type_constraint *) =
+    | Pconstraint of core_type
+    | Pcoerce of core_type option * core_type
+  (** See the comment on {{!expression_desc.Pexp_function}[Pexp_function]}. *)
+
+  and function_constraint (*IF_CURRENT = Parsetree.function_constraint *) =
+    { mode_annotations : mode_expression;
+      (** The mode annotation placed on a function let-binding when the function
+              has a type constraint on the body, e.g.
+              [let local_ f x : int -> int = ...].
+      *)
+      type_constraint : type_constraint;
+    }
+  (** See the comment on {{!expression_desc.Pexp_function}[Pexp_function]}. *)
+
   (** {2 Value descriptions} *)
 
   and value_description (*IF_CURRENT = Parsetree.value_description *) =
     {
       pval_name: string loc;
       pval_type: core_type;
+      pval_modalities : modality loc list;
       pval_prim: string list;
       pval_attributes: attributes;  (** [... [\@\@id1] [\@\@id2]] *)
       pval_loc: Location.t;
@@ -553,6 +617,7 @@ module Parsetree = struct
     {
       pld_name: string loc;
       pld_mutable: mutable_flag;
+      pld_modalities: modality loc list;
       pld_type: core_type;
       pld_loc: Location.t;
       pld_attributes: attributes;  (** [l : T [\@id1] [\@id2]] *)
@@ -578,8 +643,15 @@ module Parsetree = struct
       pcd_attributes: attributes;  (** [C of ... [\@id1] [\@id2]] *)
     }
 
+  and constructor_argument (*IF_CURRENT = Parsetree.constructor_argument *) =
+    {
+      pca_modalities: modality loc list;
+      pca_type: core_type;
+      pca_loc: Location.t;
+    }
+
   and constructor_arguments (*IF_CURRENT = Parsetree.constructor_arguments *) =
-    | Pcstr_tuple of core_type list
+    | Pcstr_tuple of constructor_argument list
     | Pcstr_record of label_declaration list
         (** Values of type {!constructor_declaration}
       represents the constructor arguments of:
@@ -1065,6 +1137,19 @@ module Parsetree = struct
       pmb_loc: Location.t;
     }
   (** Values of type [module_binding] represents [module X = ME] *)
+
+  and jkind_const_annotation = string Location.loc
+
+  and jkind_annotation (*IF_CURRENT = Parsetree.jkind_annotation *) =
+    | Default
+    | Abbreviation of jkind_const_annotation
+    | Mod of jkind_annotation * mode_expression
+    | With of jkind_annotation * core_type
+    | Kind_of of core_type
+
+  and mode_expression = mode_const_expression list Location.loc
+
+  and mode_const_expression = string Location.loc
 
   (** {1 Toplevel} *)
 

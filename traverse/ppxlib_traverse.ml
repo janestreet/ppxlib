@@ -488,6 +488,7 @@ let gen_variant ~(what : what) ~loc cds =
           in
           match args with
           | Pcstr_tuple args ->
+              let args = List.map args ~f:(fun ca -> ca.pca_type) in
               let vars = vars_of_list args ~get_loc:(fun t -> t.ptyp_loc) in
               let deconstruct =
                 ppat_construct cstr ~loc

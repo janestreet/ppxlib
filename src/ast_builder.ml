@@ -1,5 +1,33 @@
 open! Import
 
+(* Internally to Jane Street, shadow the auto-generated [pexp_fun] and [pexp_function]
+   bindings. We only want to export versions of these functions that know how to add
+   arity-related attributes.
+
+   This code can go away when we update to a version of the OCaml compiler that
+   includes https://github.com/ocaml/ocaml/pull/12236.
+*)
+(* Also shadow [label_declaration], since ppxes should use [Ppxlib_jane]'s version so as
+   to stay upstream compatible *)
+module Bindings_to_shadow = struct
+  let pexp_fun = `Shadowed
+  let pexp_function = `Shadowed
+  let label_declaration = `Shadowed
+  let value_description = `Shadowed
+
+  let () = ignore (pexp_fun, pexp_function, label_declaration, value_description)
+end
+
+module Ast_builder_generated = struct
+  include Ast_builder_generated
+  include Bindings_to_shadow
+
+  module Make (Loc : Ast_builder_intf.Loc) = struct
+    include Make (Loc)
+    include Bindings_to_shadow
+  end
+end
+
 module Default = struct
   module Located = struct
     type 'a t = 'a Loc.t
@@ -40,6 +68,15 @@ module Default = struct
     }
 
   (*-------------------------------------------------------*)
+
+  (* override changed nodes to use [Ppxlib_jane] interface *)
+  let label_declaration =
+    Ppxlib_jane.Ast_builder.Default.label_declaration ~modalities:[]
+
+  let value_description =
+    Ppxlib_jane.Ast_builder.Default.value_description ~modalities:[]
+
+  (* ----------------------------------------------------- *)
 
   let pstr_value_list ~loc rec_flag = function
     | [] -> []
@@ -111,9 +148,14 @@ module Default = struct
   let eapply ~loc e el =
     pexp_apply ~loc e (List.map el ~f:(fun e -> (Asttypes.Nolabel, e)))
 
-  let eabstract ~loc ps e =
-    List.fold_right ps ~init:e ~f:(fun p e ->
-        pexp_fun ~loc Asttypes.Nolabel None p e)
+  let pexp_function ~loc a : expression =
+    Ppxlib_jane.Ast_builder.Default.unary_function ~loc a
+
+  let pexp_fun ~loc a b c d : expression =
+    Ppxlib_jane.Ast_builder.Default.add_fun_param ~loc a b c d
+
+  let eabstract ~loc a b : expression =
+    Ppxlib_jane.Ast_builder.Default.eabstract ~loc a b
 
   let esequence ~loc el =
     match List.rev el with
@@ -180,41 +222,46 @@ module Default = struct
     type_constr_conv longident ~loc ~f []
 
   let eta_reduce =
-    let rec gather_params acc expr =
+    let rec split_params rev_prefix suffix =
+      match suffix with
+      | { pparam_desc = Pparam_val (label, None, subpat); pparam_loc = _ } :: suffix ->
+         (match subpat with
+          | { ppat_desc = Ppat_var name;
+              ppat_attributes = [];
+              ppat_loc = _;
+              ppat_loc_stack = _;
+            } ->
+            split_params ((label, name, None) :: rev_prefix) suffix
+          | { ppat_desc =
+                Ppat_constraint
+                  ( {
+                    ppat_desc = Ppat_var name;
+                    ppat_attributes = [];
+                    ppat_loc = _;
+                    ppat_loc_stack = _;
+                  },
+                    ty );
+              ppat_attributes = [];
+              ppat_loc = _;
+              ppat_loc_stack = _;
+            } ->
+            (* We reduce [fun (x : ty) -> f x] by rewriting it [(f : ty -> _)]. *)
+            split_params ((label, name, Some ty) :: rev_prefix) suffix
+          | _ -> List.rev rev_prefix, suffix)
+      | _ -> List.rev rev_prefix, suffix
+    in
+    let gather_params expr =
       match expr with
-      | {
-       pexp_desc =
-         Pexp_fun (label, None (* no default expression *), subpat, body);
-       pexp_attributes = [];
-       pexp_loc = _;
-       pexp_loc_stack = _;
-      } -> (
-          match subpat with
-          | {
-           ppat_desc = Ppat_var name;
-           ppat_attributes = [];
-           ppat_loc = _;
-           ppat_loc_stack = _;
-          } ->
-              gather_params ((label, name, None) :: acc) body
-          | {
-           ppat_desc =
-             Ppat_constraint
-               ( {
-                   ppat_desc = Ppat_var name;
-                   ppat_attributes = [];
-                   ppat_loc = _;
-                   ppat_loc_stack = _;
-                 },
-                 ty );
-           ppat_attributes = [];
-           ppat_loc = _;
-           ppat_loc_stack = _;
-          } ->
-              (* We reduce [fun (x : ty) -> f x] by rewriting it [(f : ty -> _)]. *)
-              gather_params ((label, name, Some ty) :: acc) body
-          | _ -> (List.rev acc, expr))
-      | _ -> (List.rev acc, expr)
+      | { pexp_desc = Pexp_function (params, None, Pfunction_body body);
+          pexp_attributes = [];
+          pexp_loc = _;
+          pexp_loc_stack = _;
+        } ->
+         let gathered_prefix, suffix = split_params [] params in
+         (match suffix with
+          | [] -> gathered_prefix, body
+          | _ -> [], expr)
+      | _ -> [], expr
     in
     let annotate ~loc expr params =
       if List.exists params ~f:(fun (_, _, ty) -> Option.is_some ty) then
@@ -248,7 +295,7 @@ module Default = struct
         | _ -> None
     in
     fun expr ->
-      let params, body = gather_params [] expr in
+      let params, body = gather_params expr in
       match gather_args (List.length params) body with
       | None -> None
       | Some (({ pexp_desc = Pexp_ident _; _ } as f_ident), args) -> (
@@ -340,6 +387,15 @@ end) : S = struct
 
   (*---------------------------------------------------------------*)
 
+  (* override changed nodes to use [Ppxlib_jane] interface *)
+  let label_declaration ~name ~mutable_ ~type_ =
+    Default.label_declaration ~loc ~name ~mutable_ ~type_
+
+  let value_description ~name ~type_ ~prim =
+    Default.value_description ~loc ~name ~type_ ~prim
+
+  (* ----------------------------------------------------- *)
+
   let pstr_value_list = Default.pstr_value_list
 
   let nonrec_type_declaration ~name ~params ~cstrs ~kind ~private_ ~manifest =
@@ -388,6 +444,9 @@ end) : S = struct
   let esequence el = Default.esequence ~loc el
   let elist l = Default.elist ~loc l
   let plist l = Default.plist ~loc l
+
+  let pexp_fun a b c d : expression = Default.pexp_fun ~loc a b c d
+  let pexp_function t : expression = Default.pexp_function ~loc t
 
   let type_constr_conv ident ~f args =
     Default.type_constr_conv ~loc ident ~f args
