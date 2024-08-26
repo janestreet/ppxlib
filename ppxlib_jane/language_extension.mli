@@ -1,4 +1,4 @@
-(** A [ppxlib_jane]-specific copy of the Jane Street-internal language
+(** A [ppxlib_jane_stub]-specific copy of the Jane Street-internal language
     extensions framework that reports that every language extension
     is enabled. This is the most permissive behavior possible, which
     is what we want for ppxes that process pieces of Jane Syntax.

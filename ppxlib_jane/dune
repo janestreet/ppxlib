@@ -1,6 +1,6 @@
 (library
- (name ppxlib_jane)
- (public_name ppxlib.ppxlib_jane)
+ (name ppxlib_jane_stub)
+ (public_name ppxlib.ppxlib_jane_stub)
  (libraries ocaml-compiler-libs.common compiler-libs.common ppxlib.ast ppxlib.astlib
    ppxlib.traverse_builtins ppxlib.stdppx)
  (preprocess no_preprocessing))

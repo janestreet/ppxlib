@@ -117,7 +117,7 @@ module type Additional_helpers = sig
 
   (*---------------------------------------------------------------*)
 
-  (* override changed nodes to use [Ppxlib_jane] interface *)
+  (* override changed nodes to use [Ppxlib_jane_stub] interface *)
   val label_declaration :
     (name:string loc ->
     mutable_:mutable_flag ->

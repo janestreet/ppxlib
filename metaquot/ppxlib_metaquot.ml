@@ -233,7 +233,7 @@ module Expr = Make (struct
      to:
 
      {[
-       Ppxlib_jane.Ast_builder.Default.coalesce_fun_arity [%expr fun P -> [%e y]]
+       Ppxlib_jane_stub.Ast_builder.Default.coalesce_fun_arity [%expr fun P -> [%e y]]
      ]}
 
      In this example, this makes the arity of the resulting expression equal to
@@ -248,7 +248,7 @@ module Expr = Make (struct
         let loc = input_expression.pexp_loc in
         let fun_binding =
           Ldot
-            ( Ldot (Ldot (Lident "Ppxlib_jane", "Ast_builder") ,"Default")
+            ( Ldot (Ldot (Lident "Ppxlib_jane_stub", "Ast_builder") ,"Default")
             , "coalesce_fun_arity" )
         in
         pexp_apply

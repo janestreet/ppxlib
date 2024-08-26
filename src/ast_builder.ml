@@ -7,7 +7,7 @@ open! Import
    This code can go away when we update to a version of the OCaml compiler that
    includes https://github.com/ocaml/ocaml/pull/12236.
 *)
-(* Also shadow [label_declaration], since ppxes should use [Ppxlib_jane]'s version so as
+(* Also shadow [label_declaration], since ppxes should use [Ppxlib_jane_stub]'s version so as
    to stay upstream compatible *)
 module Bindings_to_shadow = struct
   let pexp_fun = `Shadowed
@@ -69,12 +69,12 @@ module Default = struct
 
   (*-------------------------------------------------------*)
 
-  (* override changed nodes to use [Ppxlib_jane] interface *)
+  (* override changed nodes to use [Ppxlib_jane_stub] interface *)
   let label_declaration =
-    Ppxlib_jane.Ast_builder.Default.label_declaration ~modalities:[]
+    Ppxlib_jane_stub.Ast_builder.Default.label_declaration ~modalities:[]
 
   let value_description =
-    Ppxlib_jane.Ast_builder.Default.value_description ~modalities:[]
+    Ppxlib_jane_stub.Ast_builder.Default.value_description ~modalities:[]
 
   (* ----------------------------------------------------- *)
 
@@ -149,13 +149,13 @@ module Default = struct
     pexp_apply ~loc e (List.map el ~f:(fun e -> (Asttypes.Nolabel, e)))
 
   let pexp_function ~loc a : expression =
-    Ppxlib_jane.Ast_builder.Default.unary_function ~loc a
+    Ppxlib_jane_stub.Ast_builder.Default.unary_function ~loc a
 
   let pexp_fun ~loc a b c d : expression =
-    Ppxlib_jane.Ast_builder.Default.add_fun_param ~loc a b c d
+    Ppxlib_jane_stub.Ast_builder.Default.add_fun_param ~loc a b c d
 
   let eabstract ~loc a b : expression =
-    Ppxlib_jane.Ast_builder.Default.eabstract ~loc a b
+    Ppxlib_jane_stub.Ast_builder.Default.eabstract ~loc a b
 
   let esequence ~loc el =
     match List.rev el with
@@ -387,7 +387,7 @@ end) : S = struct
 
   (*---------------------------------------------------------------*)
 
-  (* override changed nodes to use [Ppxlib_jane] interface *)
+  (* override changed nodes to use [Ppxlib_jane_stub] interface *)
   let label_declaration ~name ~mutable_ ~type_ =
     Default.label_declaration ~loc ~name ~mutable_ ~type_
 

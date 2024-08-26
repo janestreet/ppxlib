@@ -35,7 +35,7 @@ open! Shadow_compiler_distribution
    [Language_extension_kernel] and a small stub for [Language_extension], are
    buildable with the upstream compiler and compiler-libs.  This allows us to
    import these files into compatibility libraries such as
-   {{:https://github.com/janestreet/ppxlib_jane}ppxlib_jane}.  We have CI tests
+   {{:https://github.com/janestreet/ppxlib_jane_stub}ppxlib_jane_stub}.  We have CI tests
    which ensure that this property is maintained.
 
    It is possible that at some point we'll really need to depend on new

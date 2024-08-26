@@ -8,7 +8,7 @@ open! Shadow_compiler_distribution
     compiler.
 
     This is the signature of the {!Language_extension_kernel} module that is
-    directly imported into [ppxlib_jane].
+    directly imported into [ppxlib_jane_stub_stub].
 *)
 
 type maturity =
@@ -61,11 +61,11 @@ val is_erasable : _ t -> bool
 module type Language_extension_for_jane_syntax = sig
   (** This module type defines the pieces of functionality used by
       {!Jane_syntax_parsing} and {!Jane_syntax} so that we can more easily
-      import these modules into [ppxlib_jane], without also including all of the
+      import these modules into [ppxlib_jane_stub], without also including all of the
       [Language_extension] machinery.
 
       It includes the stateful operations that {!Jane_syntax_parsing} relies on.
-      This limits the number of bindings that [ppxlib_jane] needs to have mock
+      This limits the number of bindings that [ppxlib_jane_stub] needs to have mock
       implementations for.
   *)
 

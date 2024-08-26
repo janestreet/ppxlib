@@ -89,12 +89,12 @@ struct
       let l = List.filter funcs ~f:(fun f -> f <> "loc" && f <> "attributes") in
       match l with
       | [ x ] ->
-          Ppxlib_jane.Ast_builder.Default.add_fun_param
+          Ppxlib_jane_stub.Ast_builder.Default.add_fun_param
             ~loc:!Ast_helper.default_loc
             Nolabel None (pvar x) body
       | _ ->
           List.fold_right l ~init:body ~f:(fun func acc ->
-            Ppxlib_jane.Ast_builder.Default.add_fun_param
+            Ppxlib_jane_stub.Ast_builder.Default.add_fun_param
               ~loc:!Ast_helper.default_loc
               (Labelled func) None (pvar func) acc)
     in

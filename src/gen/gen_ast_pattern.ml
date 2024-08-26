@@ -100,7 +100,7 @@ let gen_combinator_for_record path ~prefix ~has_attrs lds =
   in
   let body =
     List.fold_right funcs ~init:body ~f:(fun func acc ->
-      Ppxlib_jane.Ast_builder.Default.add_fun_param
+      Ppxlib_jane_stub.Ast_builder.Default.add_fun_param
         ~loc:!Ast_helper.default_loc
         (Labelled func) None (M.patt "T %a" A.patt (pvar func)) acc)
   in
